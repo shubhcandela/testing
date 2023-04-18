@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+        <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+</head>
+    
+<body>
+        <div>
+            <div class="code">
+                <video id="videoPlayer" data-dashjs-player="" autoplay allow="autoplay" height=800px width=800px controls="true"></video>
+            </div>
+        </div>
+        <div style="display: flex;flex-direction:column">
+            <div>
+                <span>Buffer Level : </span>
+                <span id="bufferLevel"></span>
+            </div>
+            <div>
+                <span>Frame Rate : </span>
+                <span id="framerate"></span>
+            </div>
+            <div>
+                <span>Bit Rate : </span>
+                <span id="reportedBitrate"></span>
+            </div>
+            <div>
+                <span>Resolution : </span>
+                <span id="resolution"></span>
+            </div>
+            <div style="display: none;">
+                <span>Calculated Bit Rate : </span>
+                <span id="calculatedBitrate"></span>
+            </div>
+            <div>
+                <span>Dropped Frame : </span>
+                <span id="droppedrate"></span>
+            </div>
+            <div>
+                <span>latency : </span>
+                <span id="latency"></span>
+            </div>
+        </div>
+        <input type="url"  class="inputurl" style="display: block;">
+        <button class="submitting" onclick="playvideo()" style="display: block;"></button>
+        <script> 
+        function playvideo(){
+
+    url = document.getElementsByClassName("inputurl")[0].value;
+    console.log(url)
+        var player = dashjs.MediaPlayer().create();
+        console.log(player)
+
+                    /* restart playback in muted mode when auto playback was not allowed by the browser */
+        player.on(dashjs.MediaPlayer.events.PLAYBACK_NOT_ALLOWED, function (data) {
+            console.log('Playback did not start due to auto play restrictions. Muting audio and reloading');
+            video.muted = true;
+            player.initialize(document.querySelector("#videoPlayer"), url, true);
+        });
+        player.initialize(document.querySelector("#videoPlayer"), url, true);
+        var video = document.getElementById("videoPlayer")
+        
+         player.on(dashjs.MediaPlayer.events["PLAYBACK_ENDED"], function () {
+    clearInterval(eventPoller);
+    clearInterval(bitrateCalculator);
+});
+
+ var eventPoller = setInterval(function () {
+        // player.play()
+    
+    var streamInfo = player.getActiveStream().getStreamInfo();
+    var dashMetrics = player.getDashMetrics();
+    var dashAdapter = player.getDashAdapter();
+
+    if (dashMetrics && streamInfo) {
+        const periodIdx = streamInfo.index;
+        var repSwitch = dashMetrics.getCurrentRepresentationSwitch('video', true);
+        var bufferLevel = dashMetrics.getCurrentBufferLevel('video', true);
+        var bitrate = repSwitch ? Math.round(dashAdapter.getBandwidthForRepresentation(repSwitch.to, periodIdx) / 1000) : NaN;
+        var adaptation = dashAdapter.getAdaptationForType(periodIdx, 'video', streamInfo);
+        var currentRep = adaptation.Representation_asArray.find(function (rep) {
+            return rep.id === repSwitch.to
+        })
+        console.log(player.getBitrateInfoListFor('video'))
+        var dropped = dashMetrics.getCurrentDroppedFrames()
+        var frameRate = currentRep.frameRate;
+        var resolution = currentRep.width + 'x' + currentRep.height;
+        var latency = player.getCurrentLiveLatency()
+        document.getElementById('bufferLevel').innerText = bufferLevel + " secs";
+        document.getElementById('framerate').innerText = frameRate + " fps";
+        console.log(player.getPlaybackRate())
+
+        console.log(dashMetrics.getCurrentBufferState('video'))
+        document.getElementById('reportedBitrate').innerText = bitrate + " Kbps";
+        document.getElementById('resolution').innerText = resolution;
+        document.getElementById('latency').innerText =player.getCurrentLiveLatency();
+        if( document.getElementById('latency').innerText == NaN){document.getElementById('latency').innerText = 0}
+        let droppedrate = dropped["droppedFrames"]
+        document.getElementById('droppedrate').innerText = droppedrate;
+
+
+        let data = {
+            "resolution":resolution,
+            "bufferlavel":bufferLevel,
+            "framerate":frameRate,
+            "latency":player.getCurrentLiveLatency(),
+            "droppedframes": droppedrate,
+            "bitrate":bitrate
+        }
+
+        sendDAta(data)
+}
+
+
+}, 1000);
+
+if (video.webkitVideoDecodedByteCount !== undefined) {
+    var lastDecodedByteCount = 0;
+    const bitrateInterval = 1;
+    var bitrateCalculator = setInterval(function () {
+        var calculatedBitrate = (((video.webkitVideoDecodedByteCount - lastDecodedByteCount) / 1000) * 8) / bitrateInterval;
+        document.getElementById('calculatedBitrate').innerText = Math.round(calculatedBitrate) + " Kbps";
+        lastDecodedByteCount = video.webkitVideoDecodedByteCount;
+    }, bitrateInterval * 1000);
+} else {
+}
+
+    };
+
+    function sendDAta(data){
+        fetch('http://127.0.0.1:3000/data', {
+            method: 'POST',
+            body: JSON.stringify(data),
+            headers: {
+                'Content-type': 'application/json; charset=UTF-8'
+            }
+            })
+            .then(res => res.json())
+            .then(console.log)
+    }
+        </script>
+</body>
+</html>
